@@ -13,7 +13,8 @@ import cv2
 import time
 from datetime import datetime
 from tensorflow.python import pywrap_tensorflow
-
+from tensorflow.python.framework import graph_util
+from tensorflow.python.platform import gfile
 
 slim = tf.contrib.slim
 
@@ -62,65 +63,22 @@ class Yolo(object):
 		self._load_weights(weights_file) # 【3】导入权重文件
 		writer =tf.summary.FileWriter("logs/",graph = self.sess.graph)
 		writer.close()
+		
 		#self.detect_from_file(image_file=input_image) # 【4】从预测输入图片，并可视化检测边界框、将obj的分类结果和坐标保存成txt。
 	####################################################################################################################
 	def _input_process(self,image_size):
 		 self.input_images = tf.placeholder(tf.uint8, shape=[None, None, 3],name="input")
-		 image = (tf.to_float(self.input_images) / 255.0)*2-1 
-		 image = tf.image.resize_images(image, tf.constant([image_size, image_size]))
+		 with tf.variable_scope("preprocess"):
+			 image = (tf.to_float(self.input_images) / 255.0)*2-1 
+			 image = tf.image.resize_images(image, tf.constant([image_size, image_size]))
 		 return  tf.expand_dims(image, 0)
     	
     	
-	# 【1】搭建网络模型(预测):模型的主体网络部分，这个网络将输出[batch,7*7*30]的张量
-	def _build_net(self):
-		# 打印状态信息
-		if self.verbose:
-			print("Start to build the network ...")
-
-		# 输入、输出用占位符，因为尺寸一般不会改变
-		self.images = tf.placeholder(tf.float32,[None,448,448,3]) # None表示不确定，为了自适应batchsize
-
-		# 搭建网络模型
-		net = self._conv_layer(self.images, 1, 64, 7, 2)
-		net = self._maxpool_layer(net, 1, 2, 2)
-		net = self._conv_layer(net, 2, 192, 3, 1)
-		net = self._maxpool_layer(net, 2, 2, 2)
-		net = self._conv_layer(net, 3, 128, 1, 1)
-		net = self._conv_layer(net, 4, 256, 3, 1)
-		net = self._conv_layer(net, 5, 256, 1, 1)
-		net = self._conv_layer(net, 6, 512, 3, 1)
-		net = self._maxpool_layer(net, 6, 2, 2)
-		net = self._conv_layer(net, 7, 256, 1, 1)
-		net = self._conv_layer(net, 8, 512, 3, 1)
-		net = self._conv_layer(net, 9, 256, 1, 1)
-		net = self._conv_layer(net, 10, 512, 3, 1)
-		net = self._conv_layer(net, 11, 256, 1, 1)
-		net = self._conv_layer(net, 12, 512, 3, 1)
-		net = self._conv_layer(net, 13, 256, 1, 1)
-		net = self._conv_layer(net, 14, 512, 3, 1)
-		net = self._conv_layer(net, 15, 512, 1, 1)
-		net = self._conv_layer(net, 16, 1024, 3, 1)
-		net = self._maxpool_layer(net, 16, 2, 2)
-		net = self._conv_layer(net, 17, 512, 1, 1)
-		net = self._conv_layer(net, 18, 1024, 3, 1)
-		net = self._conv_layer(net, 19, 512, 1, 1)
-		net = self._conv_layer(net, 20, 1024, 3, 1)
-		net = self._conv_layer(net, 21, 1024, 3, 1)
-		net = self._conv_layer(net, 22, 1024, 3, 2)
-		net = self._conv_layer(net, 23, 1024, 3, 1)
-		net = self._conv_layer(net, 24, 1024, 3, 1)
-		net = self._flatten(net)
-		net = self._fc_layer(net, 25, 512, activation=leaky_relu)
-		net = self._fc_layer(net, 26, 4096, activation=leaky_relu)
-		net = self._fc_layer(net, 27, self.S*self.S*(self.B*5+self.C))
-
-		# 网络输出，[batch,7*7*30]的张量
-		self.predicts = net
-		
-		
+	
 	def print_activations(self, t):
 		print(t.op.name, ' ', t.get_shape().as_list())
 
+    # 【1】搭建网络模型(预测):模型的主体网络部分，这个网络将输出[batch,7*7*30]的张量
 	def _build_network(self,
 					  images,
                       num_outputs=1470,
@@ -264,9 +222,20 @@ class Yolo(object):
 		        	nms_indices = tf.image.non_max_suppression(_boxes, scores,
 										self.max_output_size, self.iou_threshold)
 		        	
-		    	self.scores = tf.gather(scores, nms_indices, name="scores")
-		    	self.boxes = tf.gather(boxes, nms_indices,name="boxes")
-		    	self.box_classes = tf.gather(box_classes, nms_indices,name="classes")
+		self.scores = tf.identity(tf.gather(scores, nms_indices), name="detected_scores")
+		print(self.scores)
+		self.boxes = tf.identity(tf.gather(boxes, nms_indices),name="detected_boxes")
+		self.box_classes = tf.identity(tf.gather(box_classes, nms_indices),name="detected_classes")
+	    
+		    	
+	def save_graph_to_file(self, sess, graph, graph_file_name):
+	    output_graph_def = graph_util.convert_variables_to_constants(
+		      sess, graph, ["detected_scores","detected_boxes","detected_classes"])
+	    with gfile.FastGFile(graph_file_name, 'wb') as f:
+		    f.write(output_graph_def.SerializeToString())
+	    return
+ 
+ 
 	# print all op names
 	def _print_tensor_name(self, chkpt_fname):
 	    reader = pywrap_tensorflow.NewCheckpointReader(chkpt_fname)
@@ -369,18 +338,15 @@ class Yolo(object):
 		"""Do detection given a cv image"""
 		img_h, img_w, _ = image.shape
 		print(image.shape)
-# 		img_resized = cv2.resize(image, (448, 448))
-# 		img_RGB = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-# 		img_resized_np = np.asarray(img_RGB)
-# 		_images = np.zeros((1, 448, 448, 3), dtype=np.float32)
-# 		_images[0] = (img_resized_np / 255.0) * 2.0 - 1.0
 		start_time = time.time()
 		scores, boxes, box_classes = self.sess.run([self.scores, self.boxes, self.box_classes],
 												   feed_dict={self.input_images: image})
 		duration = time.time() - start_time
 		print ('%s: yolo.run(), duration = %.3f' %(datetime.now(), duration))
         
-		print(boxes)
+		print(scores )
+		print(boxes )
+		print(box_classes )
 		for i in range(len(scores)):#ratio convert  
 			boxes[i][0] *= (1.0 * img_w)
 			boxes[i][1] *= (1.0 * img_h)
@@ -428,6 +394,7 @@ class Yolo(object):
 
 if __name__ == '__main__':
 	yolo_net = Yolo(weights_file='pretrained/YOLO_small.ckpt')
+	yolo_net.save_graph_to_file(yolo_net.sess, yolo_net.sess.graph_def ,"models/yolov1_frozen_graph.pb") 
 	images = tf.gfile.Glob("image/*.jpg")
 	for f in images:
 		yolo_net.detect_from_file(image_file=f) # 【4】从预测输入图片，并可视化检测边界框、将obj的分类结果和坐标保存成txt。
