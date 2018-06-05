@@ -23,6 +23,6 @@ windows和ubuntu环境都可以<br><br>
 
 ## 运行Main.py即可得到效果图：<br>
 1、car.jpg：输入的待检测图片<br><br>
-![image](https://github.com/KOD-Chen/YOLOv2-Tensorflow/blob/master/yolo2_data/car.jpg)<br>
+![image](yolo2_data/car.jpg)<br>
 2、detected.jpg：检测结果可视化<br><br>
-![image](https://github.com/KOD-Chen/YOLOv2-Tensorflow/blob/master/yolo2_data/detection.jpg)<br>
+![image](yolo2_data/detection.jpg)<br>
