@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 # --------------------------------------
-# @Time    : 2018/5/16$ 17:17$
-# @Author  : 陈思成
-# @Email   : 821237536@qq.com
 # @File    : Main$.py
 # Description :YOLO_v2主函数.
 # --------------------------------------
@@ -12,10 +9,12 @@ import tensorflow as tf
 import cv2
 from PIL import Image
 
-from YOLO_v2.model_darknet19 import darknet
-from YOLO_v2.decode import decode
-from YOLO_v2.utils import preprocess_image, postprocess, draw_detection
-from YOLO_v2.config import anchors, class_names
+from model_darknet19 import darknet,darknet_slim
+from decode import decode
+from utils import preprocess_image, postprocess, draw_detection
+from config import anchors, class_names
+from tensorflow.contrib import slim
+
 
 def main():
     input_size = (416,416)
@@ -28,15 +27,15 @@ def main():
 
     # 【1】输入图片进入darknet19网络得到特征图，并进行解码得到：xmin xmax表示的边界框、置信度、类别概率
     tf_image = tf.placeholder(tf.float32,[1,input_size[0],input_size[1],3])
-    model_output = darknet(tf_image) # darknet19网络输出的特征图
+    model_output = darknet_slim(tf_image) # darknet19网络输出的特征图
     output_sizes = input_size[0]//32, input_size[1]//32 # 特征图尺寸是图片下采样32倍
     output_decoded = decode(model_output=model_output,output_sizes=output_sizes,
                                num_class=len(class_names),anchors=anchors)  # 解码
 
-    model_path = "./yolo2_model/yolo2_coco.ckpt"
-    saver = tf.train.Saver()
+    model_path = "models/model.ckpt"
+    init_fn = slim.assign_from_checkpoint_fn(model_path,slim.get_variables())
     with tf.Session() as sess:
-        saver.restore(sess,model_path)
+        init_fn(sess)
         bboxes,obj_probs,class_probs = sess.run(output_decoded,feed_dict={tf_image:image_cp})
 
     # 【2】筛选解码后的回归边界框——NMS(post process后期处理)

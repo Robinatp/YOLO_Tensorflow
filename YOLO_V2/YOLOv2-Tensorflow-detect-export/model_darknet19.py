@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 # --------------------------------------
-# @Time    : 2018/5/15$ 12:12$
-# @Author  : 陈思成
-# @Email   : 821237536@qq.com
 # @File    : model_darknet19$.py
 # Description :yolo2网络模型——darknet19.
 # --------------------------------------
@@ -10,6 +7,10 @@
 import os
 import tensorflow as tf
 import numpy as np
+from tensorflow.python import pywrap_tensorflow
+
+
+slim = tf.contrib.slim
 
 ################# 基础层：conv/pool/reorg(带passthrough的重组层) #############################################
 # 激活函数
@@ -41,6 +42,18 @@ def reorg(x,stride):
 	return tf.space_to_depth(x,block_size=stride)
 	# 或者return tf.extract_image_patches(x,ksizes=[1,stride,stride,1],strides=[1,stride,stride,1],
 	# 								rates=[1,1,1,1],padding='VALID')
+	
+	
+	
+# print all op names
+def print_tensor_name(chkpt_fname):
+	reader = pywrap_tensorflow.NewCheckpointReader(chkpt_fname)
+	var_to_shape_map = reader.get_variable_to_shape_map()
+	for key in var_to_shape_map:
+	    print("tensor_name: ", key )
+	    #print(reader.get_tensor(key)) # Remove this is you want to print only variable names	
+	return var_to_shape_map
+	
 #########################################################################################################
 
 ################################### Darknet19 ###########################################################
@@ -92,12 +105,84 @@ def darknet(images,n_last_channels=425):
 	return output
 #########################################################################################################
 
+def darknet_slim(images,n_last_channels=425):
+	with tf.variable_scope("yolov2"):
+		net = conv2d(images, filters_num=32, filters_size=3, pad_size=1, name='conv1')
+		net = maxpool(net, size=2, stride=2, name='pool1')
+	
+		net = conv2d(net, 64, 3, 1, name='conv2')
+		net = maxpool(net, 2, 2, name='pool2')
+	
+		net = conv2d(net, 128, 3, 1, name='conv3_1')
+		net = conv2d(net, 64, 1, 0, name='conv3_2')
+		net = conv2d(net, 128, 3, 1, name='conv3_3')
+		net = maxpool(net, 2, 2, name='pool3')
+	
+		net = conv2d(net, 256, 3, 1, name='conv4_1')
+		net = conv2d(net, 128, 1, 0, name='conv4_2')
+		net = conv2d(net, 256, 3, 1, name='conv4_3')
+		net = maxpool(net, 2, 2, name='pool4')
+	
+		net = conv2d(net, 512, 3, 1, name='conv5_1')
+		net = conv2d(net, 256, 1, 0,name='conv5_2')
+		net = conv2d(net,512, 3, 1, name='conv5_3')
+		net = conv2d(net, 256, 1, 0, name='conv5_4')
+		net = conv2d(net, 512, 3, 1, name='conv5_5')
+		shortcut = net # 存储这一层特征图，以便后面passthrough层
+		net = maxpool(net, 2, 2, name='pool5')
+	
+		net = conv2d(net, 1024, 3, 1, name='conv6_1')
+		net = conv2d(net, 512, 1, 0, name='conv6_2')
+		net = conv2d(net, 1024, 3, 1, name='conv6_3')
+		net = conv2d(net, 512, 1, 0, name='conv6_4')
+		net = conv2d(net, 1024, 3, 1, name='conv6_5')
+	
+		net = conv2d(net, 1024, 3, 1, name='conv7_1')
+		net = conv2d(net, 1024, 3, 1, name='conv7_2')
+		# shortcut增加了一个中间卷积层，先采用64个1*1卷积核进行卷积，然后再进行passthrough处理
+		# 这样26*26*512 -> 26*26*64 -> 13*13*256的特征图
+		shortcut = conv2d(shortcut, 64, 1, 0, name='conv_shortcut')
+		shortcut = reorg(shortcut, 2)
+		net = tf.concat([shortcut, net], axis=-1) # channel整合到一起
+		net = conv2d(net, 1024, 3, 1, name='conv8')
+	
+		# detection layer:最后用一个1*1卷积去调整channel，该层没有BN层和激活函数
+		output = conv2d(net, filters_num=n_last_channels, filters_size=1, batch_normalize=False,
+					 activation=None, use_bias=True, name='conv_dec')
+	
+		return output
+
 if __name__ == '__main__':
 	x = tf.random_normal([1, 416, 416, 3])
-	model_output = darknet(x)
+	model_output = darknet_slim(x)
 
 	saver = tf.train.Saver()
 	with tf.Session() as sess:
 		# 必须先restore模型才能打印shape;导入模型时，上面每层网络的name不能修改，否则找不到
-		saver.restore(sess, "./yolo2_model/yolo2_coco.ckpt")
+		#var_to_shape_map = print_tensor_name("./pretrainded/yolov2_checkpoint_dir/yolo2_coco.ckpt")
+		
+		
+		
+		print("variables")
+		valiables = slim.get_variables()
+		for var in  valiables:
+			print(var)
+			
+		writer =tf.summary.FileWriter("logs/",graph = sess.graph)
+		writer.close()
+		
+		
+		reader = pywrap_tensorflow.NewCheckpointReader("./pretrainded/yolov2_checkpoint_dir/yolo2_coco.ckpt")
+		var_to_shape_map = reader.get_variable_to_shape_map()
+		for key in var_to_shape_map:
+		    print("tensor_name: ", key)
+		    #print(reader.get_tensor(key))
+		with tf.variable_scope('', reuse = True):
+			for var in  var_to_shape_map:
+        	 	 sess.run(tf.get_variable("yolov2/"+var).assign(reader.get_tensor(var)))
+
+
+		saver.save(sess,"models/model.ckpt")
 		print(sess.run(model_output).shape) # (1,13,13,425)
+		
+		
