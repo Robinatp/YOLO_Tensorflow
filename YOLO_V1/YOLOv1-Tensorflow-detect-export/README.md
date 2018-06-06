@@ -9,8 +9,8 @@ windows和ubuntu环境都可以<br><br>
 2、YOLO_V1_export_interface_graph.py：程序文件，测试图片，并生成相应pb文件<br>
 3、boxes.txt：检测结果的类别和边界框坐标<br><br>
 ### 运行YOLO_V1_Inference.py即可得到效果图：<br>
-1、car.PNG：输入的待检测图片<br><br>
-![image](dog.jpg)<br>
+1、dog.jpg： 输入的待检测图片<br><br>
+![image](image/dog.jpg)<br>
 2、detected_image.jpg：检测结果可视化<br><br>
 ![image](detected_image.jpg)<br>
 
