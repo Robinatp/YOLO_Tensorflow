@@ -13,3 +13,6 @@ windows和ubuntu环境都可以<br><br>
 ![image](car.PNG)<br>
 2、detected_image.jpg：检测结果可视化<br><br>
 ![image](detection.jpg)<br>
+
+3、YOLOV1_graph.png：the Graph for YOLO_V1 from tensorboard
+![image](YOLOV1_graph.png)<br>
