@@ -10,7 +10,7 @@ from PIL import Image
 import time
 from datetime import datetime
 
-from model_darknet19 import darknet, darknet_slim
+from model_darknet19_slim import build_network
 from postprocess import decode
 from utils import preprocess_image, postprocess, _draw_detection
 from config import anchors, class_names
@@ -42,12 +42,12 @@ def main():
 
     # 【1】输入图片进入darknet19网络得到特征图，并进行解码得到：左上+右下boxes(xmin,ymin,xmax,ymax)、置信度scores、类别classes
     tf_image = input_process(416)
-    model_output = darknet_slim(tf_image) # darknet19网络输出的特征图
+    model_output = build_network(tf_image) # darknet19网络输出的特征图
     output_sizes = input_size[0]//32, input_size[1]//32 # 特征图尺寸是图片下采样32倍
     output_decoded = decode(model_output=model_output,output_sizes=output_sizes,
                                num_class=len(class_names),anchors=anchors)  # 解码
     
-    model_path = "models/model.ckpt"
+    model_path = "models/model_slim.ckpt"
     init_fn = slim.assign_from_checkpoint_fn(model_path,slim.get_variables())
     
     with tf.Session() as sess:
