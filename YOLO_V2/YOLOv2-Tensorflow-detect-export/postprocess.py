@@ -66,10 +66,13 @@ def decode(model_output,output_sizes=(13,13),num_class=80,threshold=0.5,iou_thre
 	
 	with tf.variable_scope("NMS"):
 		# NMS (不区分不同的类别)
-		# 中心坐标+宽高box (x, y, w, h) -> xmin=x-w/2 -> 左上+右下box (xmin, ymin, xmax, ymax)，因为NMS函数是这种计算方式
 # 		_boxes = tf.stack([boxes[:, 0] - 0.5 * boxes[:, 2], boxes[:, 1] - 0.5 * boxes[:, 3],
 # 								   boxes[:, 0] + 0.5 * boxes[:, 2], boxes[:, 1] + 0.5 * boxes[:, 3]], axis=1)
-		nms_indices = tf.image.non_max_suppression(boxes, scores,10, iou_threshold)
+		#Bounding boxes are supplied as [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners 
+		#and the coordinates can be provided as normalized ,(xmin,ymin,xmax,ymax) => (ymin, xmin, ymax, xmax)
+		xmin,ymin,xmax,ymax = tf.unstack(tf.transpose(boxes))
+		_boxes = tf.transpose(tf.stack([ymin, xmin, ymax, xmax]))
+		nms_indices = tf.image.non_max_suppression(_boxes, scores,10, iou_threshold)
 		
 
 		        	

@@ -181,7 +181,7 @@ class ObjectDetectModel(object):
         print('boxes:',self.boxes)
         print('scores:',self.scores)
         print('classes:',self.classes)
-        print('center_coordinates:',self.get_center_coordinates(self.boxes))
+        #print('center_coordinates:',self.get_center_coordinates(self.boxes))
     
     return self.boxes, self.scores, self.classes, self.category_index
 
@@ -223,7 +223,6 @@ class ObjectDetectModel(object):
     
     
 def vis_bounding_box(image_np,boxes, scores, classes,category_index):
-    print(classes)
     vis_util.visualize_boxes_and_labels_on_image_array(
                 image_np,
                 boxes,

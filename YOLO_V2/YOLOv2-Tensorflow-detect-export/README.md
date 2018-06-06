@@ -8,10 +8,11 @@ windows和ubuntu环境都可以<br><br>
 
 ## 文件说明：<br>
 1、model_darknet19.py：yolo2网络模型——darknet19<br>
-2、decode.py：解码darknet19网络得到的参数<br>
+2.1、decode.py：解码darknet19网络得到的参数,using numpy<br>
+2.2、postprocess.py：解码darknet19网络得到的参数,using tensorflow <br>
 3、utils.py：功能函数，包含：预处理输入图片、筛选边界框NMS、绘制筛选后的边界框<br>
 4、config.py：配置文件，包含anchor尺寸、coco数据集的80个classes类别名称<br>
-5、Main.py：YOLO_v2主函数，对应程序有三个步骤：<br>
+5、predict_by_numpy.py：YOLO_v2主函数，对应程序有三个步骤：<br>
 （1）输入图片进入darknet19网络得到特征图，并进行解码得到：xmin xmax表示的边界框、置信度、类别概率<br>
 （2）筛选解码后的回归边界框——NMS<br>
 （3）绘制筛选后的边界框<br>

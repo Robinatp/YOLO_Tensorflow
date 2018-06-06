@@ -54,6 +54,16 @@ def print_tensor_name(chkpt_fname):
 	    #print(reader.get_tensor(key)) # Remove this is you want to print only variable names	
 	return var_to_shape_map
 	
+def restore_variabes(sess,ckpt_path):
+	reader = pywrap_tensorflow.NewCheckpointReader(ckpt_path)
+	var_to_shape_map = reader.get_variable_to_shape_map()
+	for key in var_to_shape_map:
+		print("tensor_name: ", key)
+		#print(reader.get_tensor(key))
+		with tf.variable_scope('', reuse = True):
+			for var in  var_to_shape_map:
+        	 	 sess.run(tf.get_variable("yolov2/"+var).assign(reader.get_tensor(var)))
+        	 	 
 #########################################################################################################
 
 ################################### Darknet19 ###########################################################
