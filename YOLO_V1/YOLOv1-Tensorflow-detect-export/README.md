@@ -10,9 +10,9 @@ windows和ubuntu环境都可以<br><br>
 3、boxes.txt：检测结果的类别和边界框坐标<br><br>
 ### 运行YOLO_V1_Inference.py即可得到效果图：<br>
 1、car.PNG：输入的待检测图片<br><br>
-![image](car.PNG)<br>
+![image](dog.jpg)<br>
 2、detected_image.jpg：检测结果可视化<br><br>
-![image](detection.jpg)<br>
+![image](detected_image.jpg)<br>
 
 3、YOLOV1_graph.png：the Graph for YOLO_V1 from tensorboard
 ![image](YOLOV1_graph.png)<br>
