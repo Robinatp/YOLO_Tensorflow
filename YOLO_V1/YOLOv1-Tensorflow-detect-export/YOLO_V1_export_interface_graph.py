@@ -171,11 +171,8 @@ class Yolo(object):
 	def _build_detector(self):
 		with tf.variable_scope("postprocess"):
 			# 原始图片的宽和高
-# 			self.width = tf.placeholder(tf.float32,name='img_w')
-# 			self.height = tf.placeholder(tf.float32,name='img_h')
-			_, h, w, _ = tf.unstack(tf.shape(self.images))
-			height = tf.to_float(h)#input image height of the network 448
-			width = tf.to_float(w)#input image width of the network 448
+			#height = tf.to_float(h)#input image height of the network 448
+			#width = tf.to_float(w)#input image width of the network 448
 			with tf.variable_scope("slice"):
 				# 网络回归[batch,7*7*30]：
 				idx1 = self.S*self.S*self.C
@@ -196,34 +193,35 @@ class Yolo(object):
 						  tf.square(boxes[:, :, :, 2]),#self.width,
 						  tf.square(boxes[:, :, :, 3])], axis=3)#self.height], axis=3)
 		
-		        with tf.variable_scope("confidence"):
-				# 类别置信度分数：[S,S,B,1]*[S,S,1,C]=[S,S,B,类别置信度C]
-				scores = tf.expand_dims(confs, -1) * tf.expand_dims(class_probs, 2)
+			with tf.variable_scope("class-specific"):
+			    # 类别置信度分数：[S,S,B,1]*[S,S,1,C]=[S,S,B,类别置信度C]
+			    scores = tf.expand_dims(confs, -1) * tf.expand_dims(class_probs, 2)
 		
-				scores = tf.reshape(scores, [-1, self.C])  # [S*S*B, C]
-				boxes = tf.reshape(boxes, [-1, 4])  # [S*S*B, 4]
+			    scores = tf.reshape(scores, [-1, self.C])  # [S*S*B, C]
+			    boxes = tf.reshape(boxes, [-1, 4])  # [S*S*B, 4]
 		
 				# 只选择类别置信度最大的值作为box的类别、分数
-				box_classes = tf.argmax(scores, axis=1) # 边界框box的类别
-			        box_class_scores = tf.reduce_max(scores, axis=1) # 边界框box的分数
+			    box_classes = tf.argmax(scores, axis=1) # 边界框box的类别
+			    box_class_scores = tf.reduce_max(scores, axis=1) # 边界框box的分数
 		
-		        with tf.variable_scope("threshold"):
+			with tf.variable_scope("select-threshold"):
 				# 利用类别置信度阈值self.threshold，过滤掉类别置信度低的
-			        filter_mask = box_class_scores >= self.threshold
-		        	scores = tf.boolean_mask(box_class_scores, filter_mask)
-		        	boxes = tf.boolean_mask(boxes, filter_mask)
-		        	box_classes = tf.boolean_mask(box_classes, filter_mask)
+			    filter_mask = box_class_scores >= self.threshold
+			    scores = tf.boolean_mask(box_class_scores, filter_mask)
+			    boxes = tf.boolean_mask(boxes, filter_mask)
+			    box_classes = tf.boolean_mask(box_classes, filter_mask)
 		
-		        with tf.variable_scope("NMS"):
+			with tf.variable_scope("NMS"):
 				# NMS (不区分不同的类别)
-				# 中心坐标+宽高box (x, y, w, h) -> xmin=x-w/2 -> 左上+右下box (xmin, ymin, xmax, ymax)，因为NMS函数是这种计算方式
-		        	_boxes = tf.stack([boxes[:, 0] - 0.5 * boxes[:, 2], boxes[:, 1] - 0.5 * boxes[:, 3],
-								   boxes[:, 0] + 0.5 * boxes[:, 2], boxes[:, 1] + 0.5 * boxes[:, 3]], axis=1)
-		        	nms_indices = tf.image.non_max_suppression(_boxes, scores,
-										self.max_output_size, self.iou_threshold)
+				# 中心坐标+宽高box (x, y, w, h) -> xmin=x-w/2 -> 左上+右下box (ymin, xmin, ymax, xmax)，因为NMS函数是这种计算方式
+				_boxes = tf.stack([boxes[:, 1] - 0.5 * boxes[:, 2], boxes[:, 0] - 0.5 * boxes[:, 3],
+								       boxes[:, 1] + 0.5 * boxes[:, 2], boxes[:, 0] + 0.5 * boxes[:, 3]], axis=1)
+				#Bounding boxes are supplied as [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners 
+				#and the coordinates can be provided as normalized ,ymin, xmin, ymax, xmax
+				nms_indices = tf.image.non_max_suppression(_boxes, scores,
+																self.max_output_size, self.iou_threshold)
 		        	
 		self.scores = tf.identity(tf.gather(scores, nms_indices), name="detected_scores")
-		print(self.scores)
 		self.boxes = tf.identity(tf.gather(boxes, nms_indices),name="detected_boxes")
 		self.box_classes = tf.identity(tf.gather(box_classes, nms_indices),name="detected_classes")
 	    

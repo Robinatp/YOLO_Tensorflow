@@ -145,7 +145,7 @@ class ObjectDetectModel(object):
 
   def load_category(self, label_file):
         label_map = label_map_util.load_labelmap(label_file)
-        categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=2, use_display_name=True)
+        categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=20, use_display_name=True)
         category_index = label_map_util.create_category_index(categories)
         return category_index
         
@@ -182,7 +182,7 @@ class ObjectDetectModel(object):
         print('boxes:',self.boxes)
         print('scores:',self.scores)
         print('classes:',self.classes)
-        print('center_coordinates:',self.get_center_coordinates(self.boxes))
+        #print('center_coordinates:',self.get_center_coordinates(self.boxes))
     
     return self.boxes, self.scores, self.classes, self.category_index
 
