@@ -1,0 +1,33 @@
+ layer     filters    size              input                output
+    0 conv     64  7 x 7 / 2   448 x 448 x   3   ->   224 x 224 x  64  0.944 BFLOPs
+    1 max          2 x 2 / 2   224 x 224 x  64   ->   112 x 112 x  64
+    2 conv    192  3 x 3 / 1   112 x 112 x  64   ->   112 x 112 x 192  2.775 BFLOPs
+    3 max          2 x 2 / 2   112 x 112 x 192   ->    56 x  56 x 192
+    4 conv    128  1 x 1 / 1    56 x  56 x 192   ->    56 x  56 x 128  0.154 BFLOPs
+    5 conv    256  3 x 3 / 1    56 x  56 x 128   ->    56 x  56 x 256  1.850 BFLOPs
+    6 conv    256  1 x 1 / 1    56 x  56 x 256   ->    56 x  56 x 256  0.411 BFLOPs
+    7 conv    512  3 x 3 / 1    56 x  56 x 256   ->    56 x  56 x 512  7.399 BFLOPs
+    8 max          2 x 2 / 2    56 x  56 x 512   ->    28 x  28 x 512
+    9 conv    256  1 x 1 / 1    28 x  28 x 512   ->    28 x  28 x 256  0.206 BFLOPs
+   10 conv    512  3 x 3 / 1    28 x  28 x 256   ->    28 x  28 x 512  1.850 BFLOPs
+   11 conv    256  1 x 1 / 1    28 x  28 x 512   ->    28 x  28 x 256  0.206 BFLOPs
+   12 conv    512  3 x 3 / 1    28 x  28 x 256   ->    28 x  28 x 512  1.850 BFLOPs
+   13 conv    256  1 x 1 / 1    28 x  28 x 512   ->    28 x  28 x 256  0.206 BFLOPs
+   14 conv    512  3 x 3 / 1    28 x  28 x 256   ->    28 x  28 x 512  1.850 BFLOPs
+   15 conv    256  1 x 1 / 1    28 x  28 x 512   ->    28 x  28 x 256  0.206 BFLOPs
+   16 conv    512  3 x 3 / 1    28 x  28 x 256   ->    28 x  28 x 512  1.850 BFLOPs
+   17 conv    512  1 x 1 / 1    28 x  28 x 512   ->    28 x  28 x 512  0.411 BFLOPs
+   18 conv   1024  3 x 3 / 1    28 x  28 x 512   ->    28 x  28 x1024  7.399 BFLOPs
+   19 max          2 x 2 / 2    28 x  28 x1024   ->    14 x  14 x1024
+   20 conv    512  1 x 1 / 1    14 x  14 x1024   ->    14 x  14 x 512  0.206 BFLOPs
+   21 conv   1024  3 x 3 / 1    14 x  14 x 512   ->    14 x  14 x1024  1.850 BFLOPs
+   22 conv    512  1 x 1 / 1    14 x  14 x1024   ->    14 x  14 x 512  0.206 BFLOPs
+   23 conv   1024  3 x 3 / 1    14 x  14 x 512   ->    14 x  14 x1024  1.850 BFLOPs
+   24 conv   1024  3 x 3 / 1    14 x  14 x1024   ->    14 x  14 x1024  3.699 BFLOPs
+   25 conv   1024  3 x 3 / 2    14 x  14 x1024   ->     7 x   7 x1024  0.925 BFLOPs
+   26 conv   1024  3 x 3 / 1     7 x   7 x1024   ->     7 x   7 x1024  0.925 BFLOPs
+   27 conv   1024  3 x 3 / 1     7 x   7 x1024   ->     7 x   7 x1024  0.925 BFLOPs
+   28 Local Layer: 7 x 7 x 1024 image, 256 filters -> 7 x 7 x 256 image
+   29 dropout       p = 0.50               12544  ->  12544
+   30 connected                            12544  ->  1715
+   31 Detection Layer
