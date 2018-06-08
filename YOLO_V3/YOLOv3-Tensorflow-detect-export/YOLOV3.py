@@ -18,7 +18,9 @@ def darknet53(inputs):
     """
     inputs = _conv2d_fixed_padding(inputs, 32, 3)
     inputs = _conv2d_fixed_padding(inputs, 64, 3, strides=2)
+    
     inputs = _darknet53_block(inputs, 32)
+    
     inputs = _conv2d_fixed_padding(inputs, 128, 3, strides=2)
 
     for i in range(2):
@@ -29,19 +31,23 @@ def darknet53(inputs):
     for i in range(8):
         inputs = _darknet53_block(inputs, 128)
 
-    route_1 = inputs
+    route_1 = inputs#52X52X256
     inputs = _conv2d_fixed_padding(inputs, 512, 3, strides=2)
 
     for i in range(8):
         inputs = _darknet53_block(inputs, 256)
 
-    route_2 = inputs
+    route_2 = inputs#26X26X512
     inputs = _conv2d_fixed_padding(inputs, 1024, 3, strides=2)
 
     for i in range(4):
-        inputs = _darknet53_block(inputs, 512)
-    #inputs 13X13X1024
+        inputs = _darknet53_block(inputs, 512)#inputs 13X13X1024
+    
+    
     return route_1, route_2, inputs
+    #route_1    Tensor: Tensor("detector/darknet-53/add_10:0", shape=(?, 52, 52, 256), dtype=float32)    
+    #route_2    Tensor: Tensor("detector/darknet-53/add_18:0", shape=(?, 26, 26, 512), dtype=float32)    
+    #inputs    Tensor: Tensor("detector/darknet-53/add_22:0", shape=(?, 13, 13, 1024), dtype=float32)
 
 
 def _conv2d_fixed_padding(inputs, filters, kernel_size, strides=1):
@@ -55,7 +61,7 @@ def _darknet53_block(inputs, filters):
     shortcut = inputs
     inputs = _conv2d_fixed_padding(inputs, filters, 1)
     inputs = _conv2d_fixed_padding(inputs, filters * 2, 3)
-
+    
     inputs = inputs + shortcut
     return inputs
 
@@ -110,52 +116,125 @@ def _get_size(shape, data_format):
 
 def _detection_layer(inputs, num_classes, anchors, img_size, data_format):
     with tf.name_scope("detection_layer"):
-        num_anchors = len(anchors)
+        num_anchors = len(anchors)#3
         predictions = slim.conv2d(inputs, num_anchors * (5 + num_classes), 1, stride=1, normalizer_fn=None,
                                   activation_fn=None, biases_initializer=tf.zeros_initializer())
-
+    
         shape = predictions.get_shape().as_list()
         grid_size = _get_size(shape, data_format)
         dim = grid_size[0] * grid_size[1]
-        bbox_attrs = 5 + num_classes
-
+        bbox_attrs = 5 + num_classes#85
+    
         if data_format == 'NCHW':
             predictions = tf.reshape(predictions, [-1, num_anchors * bbox_attrs, dim])
             predictions = tf.transpose(predictions, [0, 2, 1])
-
+    
         predictions = tf.reshape(predictions, [-1, num_anchors * dim, bbox_attrs])
-
+    
         stride = (img_size[0] // grid_size[0], img_size[1] // grid_size[1])
         print(stride)
-
+    
         anchors = [(a[0] / stride[0], a[1] / stride[1]) for a in anchors]
-
+    
         box_centers, box_sizes, confidence, classes = tf.split(predictions, [2, 2, 1, num_classes], axis=-1)
-
+    
         box_centers = tf.nn.sigmoid(box_centers)
         confidence = tf.nn.sigmoid(confidence)
-
+    
         grid_x = tf.range(grid_size[0], dtype=tf.float32)
         grid_y = tf.range(grid_size[1], dtype=tf.float32)
         a, b = tf.meshgrid(grid_x, grid_y)
-
+    
         x_offset = tf.reshape(a, (-1, 1))
         y_offset = tf.reshape(b, (-1, 1))
-
+    
         x_y_offset = tf.concat([x_offset, y_offset], axis=-1)
         x_y_offset = tf.reshape(tf.tile(x_y_offset, [1, num_anchors]), [1, -1, 2])
-
+    
         box_centers = box_centers + x_y_offset
         box_centers = box_centers * stride
-
+    
         anchors = tf.tile(anchors, [dim, 1])
         box_sizes = tf.exp(box_sizes) * tf.to_float(anchors)
         box_sizes = box_sizes * stride
-
+    
+        #(xcenter, ycenter, w, h)
         detections = tf.concat([box_centers, box_sizes, confidence], axis=-1)
-
+    
         classes = tf.nn.sigmoid(classes)
         predictions = tf.concat([detections, classes], axis=-1)
+        return predictions
+    
+def _ratio_detection_layer(inputs, num_classes, anchors, img_size, data_format):
+    with tf.name_scope("detection_layer"):
+        num_anchors = len(anchors)#3
+        predictions = slim.conv2d(inputs, num_anchors * (5 + num_classes), 1, stride=1, normalizer_fn=None,
+                                  activation_fn=None, biases_initializer=tf.zeros_initializer())
+    
+        shape = predictions.get_shape().as_list()
+        #[None, 13, 13, 255], scale1
+        #[None, 26, 26, 255], scale2
+        #[None, 52, 52, 255], scale3
+
+        grid_size = _get_size(shape, data_format)
+        #[13, 13]
+        #[26, 26]
+        #[52, 52]
+       
+        with tf.name_scope("anchor_meshgrid"):
+            grid_x = tf.range(grid_size[0], dtype=tf.float32)
+            grid_y = tf.range(grid_size[1], dtype=tf.float32)
+            a, b = tf.meshgrid(grid_x, grid_y)
+        
+            x_offset = tf.reshape(a, (-1, 1))
+            y_offset = tf.reshape(b, (-1, 1))
+        
+            #the offset from the top left corner of the image by x_y_offset, 1 stand for stride
+            x_y_offset = tf.concat([x_offset, y_offset], axis=-1)
+            x_y_offset = tf.cast(x_y_offset, tf.float32)
+            x_y_offset = tf.reshape(tf.tile(x_y_offset, [1, num_anchors]), [1, -1, 2])
+    
+        with tf.name_scope("slice"):
+            dim = grid_size[0] * grid_size[1]    #169,676,2704
+            bbox_attrs = 5 + num_classes         #85
+            
+            if data_format == 'NCHW':
+                predictions = tf.reshape(predictions, [-1, num_anchors * bbox_attrs, dim])
+                predictions = tf.transpose(predictions, [0, 2, 1])
+
+            predictions = tf.reshape(predictions, [-1, num_anchors * dim, bbox_attrs])
+            #Tensor("detector/yolo-v3/Predict_1/detection_layer/Reshape:0", shape=(?, 507, 85), dtype=float32)
+            #Tensor("detector/yolo-v3/Predict_2/detection_layer/Reshape:0", shape=(?, 2028, 85), dtype=float32)
+            #Tensor("detector/yolo-v3/Predict_3/detection_layer/Reshape:0", shape=(?, 8112, 85), dtype=float32)
+            
+            box_centers, box_sizes, confidence, classes = tf.split(predictions, [2, 2, 1, num_classes], axis=-1)
+            box_centers = tf.nn.sigmoid(box_centers)
+            confidence = tf.nn.sigmoid(confidence)
+            classes = tf.nn.sigmoid(classes)
+        
+        with tf.name_scope("box_coord"):
+            box_centers = box_centers + x_y_offset
+            # the ratio offset from the top left corner of the image
+            box_centers = box_centers /grid_size
+        
+            stride = (img_size[0] // grid_size[0], img_size[1] // grid_size[1])
+            #(32, 32)
+            #(16, 16)
+            #(8, 8)
+        
+            anchors = [(1.0*a[0] / stride[0], 1.0*a[1] / stride[1]) for a in anchors]
+            #[(3.625, 2.8125), (4.875, 6.1875), (11.65625, 10.1875)]
+            #[(1.875, 3.8125), (3.875, 2.8125), (3.6875, 7.4375)]
+            #[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)]
+            
+            anchors = tf.tile(anchors, [dim, 1])
+            box_sizes = tf.exp(box_sizes) * anchors
+            # the ratio size of the image
+            box_sizes = box_sizes /grid_size
+        
+        #(xcenter, ycenter, w, h, confidence ,classes_probability)
+        predictions = tf.concat([box_centers, box_sizes, confidence,classes], axis=-1)
+        
         return predictions
 
 
@@ -192,7 +271,7 @@ def _upsample(inputs, out_shape, data_format='NCHW'):
     return inputs
 
 
-def yolo_v3(inputs, num_classes, is_training=False, data_format='NCHW', reuse=False):
+def yolo_v3(inputs, num_classes, score_threshold=0.5, iou_threshold=0.5, is_training=False, data_format='NCHW', reuse=False):
     """
     Creates YOLO v3 model.
 
@@ -205,7 +284,7 @@ def yolo_v3(inputs, num_classes, is_training=False, data_format='NCHW', reuse=Fa
     :return:
     """
     # it will be needed later on
-    img_size = inputs.get_shape().as_list()[1:3]
+    img_size = inputs.get_shape().as_list()[1:3]#(416,416)
 
     # transpose the inputs to NCHW
     if data_format == 'NCHW':
@@ -234,37 +313,73 @@ def yolo_v3(inputs, num_classes, is_training=False, data_format='NCHW', reuse=Fa
                 #inputs    Tensor: Tensor("detector/darknet-53/add_22:0", shape=(?, 13, 13, 1024), dtype=float32)
 
             with tf.variable_scope('yolo-v3'):
-                with tf.name_scope("block1"):
+                with tf.name_scope("Predict_1"):
                     route, inputs = _yolo_block(inputs, 512)
-                    detect_1 = _detection_layer(inputs, num_classes, _ANCHORS[6:9], img_size, data_format)
-                    detect_1 = tf.identity(detect_1, name='detect_1')
+                    detect_1 = _ratio_detection_layer(inputs, num_classes, _ANCHORS[6:9], img_size, data_format)
+                    detect_1 = tf.identity(detect_1, name='scale_1')#Tensor("detector/yolo-v3/Detection_0/detect_1:0", shape=(?, 507, 85), dtype=float32)
 
-                with tf.name_scope("block2"):
+                with tf.name_scope("Predict_2"):
                     with tf.name_scope("upsample"):
                         inputs = _conv2d_fixed_padding(route, 256, 1)
                         upsample_size = route_2.get_shape().as_list()
                         inputs = _upsample(inputs, upsample_size, data_format)
                         inputs = tf.concat([inputs, route_2], axis=1 if data_format == 'NCHW' else 3)
-
+    
                     route, inputs = _yolo_block(inputs, 256)
-
-                    detect_2 = _detection_layer(inputs, num_classes, _ANCHORS[3:6], img_size, data_format)
-                    detect_2 = tf.identity(detect_2, name='detect_2')
-
-                with tf.name_scope("block3"):
+                    detect_2 = _ratio_detection_layer(inputs, num_classes, _ANCHORS[3:6], img_size, data_format)
+                    detect_2 = tf.identity(detect_2, name='scale_2')#Tensor("detector/yolo-v3/Detection_2/detect_2:0", shape=(?, 2028, 85), dtype=float32)
+                
+                with tf.name_scope("Predict_3"):
                     with tf.name_scope("upsample"):
                         inputs = _conv2d_fixed_padding(route, 128, 1)
                         upsample_size = route_1.get_shape().as_list()
                         inputs = _upsample(inputs, upsample_size, data_format)
                         inputs = tf.concat([inputs, route_1], axis=1 if data_format == 'NCHW' else 3)
-
+    
                     _, inputs = _yolo_block(inputs, 128)
-
-                    detect_3 = _detection_layer(inputs, num_classes, _ANCHORS[0:3], img_size, data_format)
-                    detect_3 = tf.identity(detect_3, name='detect_3')
-
+                    detect_3 = _ratio_detection_layer(inputs, num_classes, _ANCHORS[0:3], img_size, data_format)
+                    detect_3 = tf.identity(detect_3, name='scale_3')#Tensor("detector/yolo-v3/Detection_3/detect_3:0", shape=(?, 8112, 85), dtype=float32)
+    
+                #(xcenter, ycenter, w, h, confidence ,classes_probability)
                 detections = tf.concat([detect_1, detect_2, detect_3], axis=1)
-                return detections
+                
+                
+                with tf.name_scope("coord_transform"):
+                    center_x, center_y, width, height, confidence, class_prob = tf.split(detections, [1, 1, 1, 1, 1, -1], axis=-1)
+                    w2 = width * 0.5
+                    h2 = height * 0.5       
+                    bboxes = tf.concat([center_x - w2, center_y - h2, center_x + w2, center_y + h2], axis=-1)
+                    
+                with tf.name_scope("select-threhold"):
+                    # score filter
+                    box_scores = confidence * class_prob      # (?, 20)
+                    box_label = tf.to_int32(tf.argmax(box_scores, axis=-1))    # (?, )
+                    box_scores_max = tf.reduce_max(box_scores, axis=-1)     # (?, )
+             
+                    pred_mask = box_scores_max > score_threshold
+                    bboxes = tf.boolean_mask(bboxes, pred_mask)
+                    scores = tf.boolean_mask(box_scores_max, pred_mask)
+                    classes = tf.boolean_mask(box_label, pred_mask)
+             
+                with tf.name_scope("NMS"):
+                    # non_max_suppression
+                    xmin,ymin,xmax,ymax = tf.unstack(tf.transpose(bboxes))
+                    _boxes = tf.transpose(tf.stack([ymin, xmin, ymax, xmax]))
+                    nms_indices = tf.image.non_max_suppression(_boxes, scores,
+                                                           max_output_size=20,
+                                                           iou_threshold=iou_threshold)
+#                 bboxes = tf.gather(bboxes, idx_nms)
+#                 scores = tf.gather(scores, idx_nms)
+#                 classes = tf.to_int32(tf.gather(classes, idx_nms))
+#                 print(bboxes,scores,classes) 
+                
+    
+    bboxes = tf.identity(tf.gather(bboxes, nms_indices),name="detected_boxes")
+    scores = tf.identity(tf.gather(scores, nms_indices), name="detected_scores")
+    classes = tf.identity(tf.gather(classes, nms_indices),name="detected_classes")
+    print(bboxes,scores,classes)
+
+    return detections,bboxes,scores,classes#Tensor("detector/yolo-v3/concat:0", shape=(?, 10647, 85), dtype=float32)
 
 
 def load_weights(var_list, weights_file):
@@ -329,7 +444,7 @@ def load_weights(var_list, weights_file):
 def detections_boxes(detections):
     """
     Converts center x, center y, width and height values to coordinates of top left and bottom right points.
-
+    (xmin,ymin,xmax,ymax)
     :param detections: outputs of YOLO v3 detector of shape (?, 10647, (num_classes + 5))
     :return: converted detections of same shape as input
     """
@@ -341,7 +456,7 @@ def detections_boxes(detections):
         y0 = center_y - h2
         x1 = center_x + w2
         y1 = center_y + h2
-
+    
         boxes = tf.concat([x0, y0, x1, y1], axis=-1)
     detections = tf.concat([boxes, attrs], axis=-1)
     return detections
@@ -382,8 +497,8 @@ def non_max_suppression(predictions_with_boxes, confidence_threshold, iou_thresh
     :param iou_threshold: the threshold for deciding if two boxes overlap
     :return: dict: class -> [(box, score)]
     """
-    conf_mask = np.expand_dims((predictions_with_boxes[:, :, 4] > confidence_threshold), -1)
-    predictions = predictions_with_boxes * conf_mask
+    conf_mask = np.expand_dims((predictions_with_boxes[:, :, 4] > confidence_threshold), -1)#get the confidence of per bounding box
+    predictions = predictions_with_boxes * conf_mask#shape    <type 'tuple'>: (1, 10647, 85)
 
     result = {}
     for i, image_pred in enumerate(predictions):
