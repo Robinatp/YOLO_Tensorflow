@@ -4,6 +4,8 @@ Implementation of YOLO v3 object detector in Tensorflow (TF-Slim). The weight ca
 
 Tested on Tensorflow 1.8.0 on Ubuntu 16.04.
 
+Just only load the darknet yolov3 weight,you can run YOLO_V3_inference.py for demo.
+
 
 ## 文件说明：<br>
 1、convert_ckpt_and_inference.py：load yolov3.weights and convert it to models/yolov3.ckpt which is used by YOLO_V3_inference.py <br>
@@ -11,8 +13,8 @@ Tested on Tensorflow 1.8.0 on Ubuntu 16.04.
 3、YOLOV3.py：配置文件，包含anchor尺寸、coco数据集的80个classes类别名称，使用tensorflow做postprocess<br>
 4、yolo_v3.py：配置文件，包含anchor尺寸、coco数据集的80个classes类别名称,使用numpy做postprocess<br>
 
-#Architecture
-Thank you Ayoosh Kathuria() for your great image!
+## Architecture：<br>
+Thank you Ayoosh Kathuria for your great image!
 ![image](Architecture.png)<br>
 
 
