@@ -1084,6 +1084,20 @@ void load_connected_weights(layer l, FILE *fp, int transpose)
 {
     fread(l.biases, sizeof(float), l.outputs, fp);
     fread(l.weights, sizeof(float), l.outputs*l.inputs, fp);
+    if(1){
+        int i;
+        printf("*******************************robin#connected_biases(l.outputs=%d)====================\n",l.outputs);
+        for(i = 0; i < l.outputs; ++i){
+           printf("%g, ", l.biases[i]);
+        }
+        printf("\n");
+
+        printf("*******************************robin#connected_weights(l.outputs=%d)====================\n",l.outputs);
+        for(i = 0; i < l.outputs; ++i){
+           printf("%g, ", l.weights[i]);
+        }
+        printf("\n");
+    }
     if(transpose){
         transpose_matrix(l.weights, l.inputs, l.outputs);
     }
@@ -1158,12 +1172,29 @@ void load_convolutional_weights(layer l, FILE *fp)
         fread(l.scales, sizeof(float), l.n, fp);
         fread(l.rolling_mean, sizeof(float), l.n, fp);
         fread(l.rolling_variance, sizeof(float), l.n, fp);
-        if(0){
+
+        if(1){
             int i;
+            printf("*******************************robin#convolutional_biases/beta(l.n=%d)--------\n",l.n);
+            for(i = 0; i < l.n; ++i){
+                printf("%g, ", l.biases[i]);
+             }
+             printf("\n");
+
+
+            printf("*******************************robin#convolutional_scales/gamma(l.n=%d)---------------\n",l.n);
+            for(i = 0; i < l.n; ++i){
+                printf("%g, ", l.scales[i]);
+            }
+            printf("\n");
+
+            printf("*******************************robin#convolutional_rolling_mean(l.n=%d)--------------------\n",l.n);
             for(i = 0; i < l.n; ++i){
                 printf("%g, ", l.rolling_mean[i]);
             }
             printf("\n");
+
+            printf("*******************************robin#convolutional_rolling_variance(l.n=%d)-----------------\n",l.n);
             for(i = 0; i < l.n; ++i){
                 printf("%g, ", l.rolling_variance[i]);
             }
@@ -1186,6 +1217,14 @@ void load_convolutional_weights(layer l, FILE *fp)
         }
     }
     fread(l.weights, sizeof(float), num, fp);
+    if(1){
+        int i;
+        printf("*******************************robin#convolutional_weights(num=%d)====================\n",num);
+        for(i = 0; i < l.n; ++i){
+            printf("%g, ", l.weights[i]);
+         }
+        printf("\n");
+     }
     //if(l.c == 3) scal_cpu(num, 1./256, l.weights, 1);
     if (l.flipped) {
         transpose_matrix(l.weights, l.c*l.size*l.size, l.n);
@@ -1275,9 +1314,25 @@ void load_weights_upto(network *net, char *filename, int start, int cutoff)
         }
         if(l.type == LOCAL){
             int locations = l.out_w*l.out_h;
+            printf("%d,%d\n",l.out_w,l.out_h);
             int size = l.size*l.size*l.c*l.n*locations;
+            printf("%d,%d,%d,%d,%d\n",l.size,l.size,l.c,l.n,locations);
             fread(l.biases, sizeof(float), l.outputs, fp);
             fread(l.weights, sizeof(float), size, fp);
+            if(1){
+                 int i;
+                 printf("robin=LOCAL_biases(%d)====================\n",l.outputs);
+                 for(i = 0; i < l.outputs; ++i){
+                     printf("%g, ", l.biases[i]);
+                 }
+                 printf("\n");
+
+                 printf("robin=LOCAL_weights(%d)====================\n",size);
+                 for(i = 0; i < l.n; ++i){
+                      printf("%g, ", l.weights[i]);
+                 }
+                 printf("\n");
+            }
 #ifdef GPU
             if(gpu_index >= 0){
                 push_local_layer(l);
