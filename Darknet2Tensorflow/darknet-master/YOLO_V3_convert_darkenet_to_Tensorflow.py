@@ -50,7 +50,7 @@ tf.app.flags.DEFINE_boolean('save_model_pb', True, 'Whether save  model weights 
 
 class YOLOV3(object):
 	##################### 构造函数：初始化yolo中参数#################################################################
-	def __init__(self,weights_file,input_image=None,verbose=False):
+	def __init__(self,weights_file, verbose=False):
 		# 后面程序打印描述功能的标志位
 		self.verbose = verbose
 
@@ -203,14 +203,11 @@ class YOLOV3(object):
 	            
 	            # we can load weights of conv layer
 	            shape = var1.shape.as_list()
-	            print(shape)
 	            num_params = np.prod(shape)
-	            
-	            var_weights = weights[ptr:ptr + num_params].reshape(shape)
 
-# 	            var_weights = weights[ptr:ptr + num_params].reshape(shape[1], shape[0])
-# 	            # remember to transpose to column-major
-# 	            var_weights = np.transpose(var_weights, (1, 0))
+ 	            var_weights = weights[ptr:ptr + num_params].reshape(shape[1], shape[0])
+ 	            # remember to transpose to column-major
+ 	            var_weights = np.transpose(var_weights, (1, 0))
 	            ptr += num_params
 	            print(var1,ptr)
 	            assign_ops.append(tf.assign(var1, var_weights, validate_shape=True))

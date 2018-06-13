@@ -148,6 +148,15 @@ if __name__ == "__main__":
     #meta = load_meta("cfg/imagenet1k.data")
     #r = classify(net, meta, im)
     #print r[:10]
+    
+    
+    #yolov2
+    net = load_net("./cfg/yolov2.cfg", "./weight/yolov2.weights", 0)
+    meta = load_meta("./cfg/coco.data")
+    r = detect(net, meta, "data/dog.jpg")
+    print r
+    
+    #yolov3
     net = load_net("./cfg/yolov3.cfg", "./weight/yolov3.weights", 0)
     meta = load_meta("./cfg/coco.data")
     r = detect(net, meta, "data/dog.jpg")

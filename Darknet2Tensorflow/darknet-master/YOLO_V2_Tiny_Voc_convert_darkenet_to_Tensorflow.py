@@ -22,23 +22,21 @@ from tensorflow.python.platform import gfile
 slim = tf.contrib.slim
 
 
-ANCHOR = [[0.57273, 0.677385],
-           [1.87446, 2.06253],
-           [3.33843, 5.47434],
-           [7.88282, 3.52778],
-           [9.77052, 9.16828]]
+#ANCHOR = [[0.57273, 0.677385],[1.87446, 2.06253],[3.33843, 5.47434],[7.88282, 3.52778],[9.77052, 9.16828]]#for coco dataset
+
+ANCHOR = [[1.08,1.19],  [3.42,4.41],  [6.63,11.38],  [9.42,5.11],  [16.62,10.52]] #for voc dataset
 
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('image_dir', 'data', 'Input image foldir name')
 tf.app.flags.DEFINE_string('output_img', 'results/detected.jpg', 'Output image')
-tf.app.flags.DEFINE_string('class_names', 'data/coco.names', 'File with class names')
-tf.app.flags.DEFINE_string('yolov2_ckpt_weight', 'models/yolov2.ckpt', 'File with yolov2.ckpt names')
-tf.app.flags.DEFINE_string('darknet_weights_file', 'weight/yolov2.weights', 'Binary file with detector weights')
+tf.app.flags.DEFINE_string('class_names', 'data/voc.names', 'File with class names')
+tf.app.flags.DEFINE_string('yolov2_ckpt_weight', 'models/yolov2-tiny-voc.ckpt', 'File with yolov2.ckpt names')
+tf.app.flags.DEFINE_string('darknet_weights_file', 'weight/yolov2-tiny-voc.weights', 'Binary file with detector weights')
 
 tf.app.flags.DEFINE_integer('input_size', 416, 'The input image size for network')
 
-tf.app.flags.DEFINE_float('conf_threshold', 0.4, 'Confidence threshold')
+tf.app.flags.DEFINE_float('conf_threshold', 0.2, 'Confidence threshold')
 tf.app.flags.DEFINE_float('iou_threshold', 0.5, 'IoU threshold')
 tf.app.flags.DEFINE_integer('max_output_size', 10, 'the maximum number of boxes to be selected by non max suppression')
 
@@ -47,7 +45,7 @@ tf.app.flags.DEFINE_boolean('load_darknet_weight', True, 'Whether load darknet w
 tf.app.flags.DEFINE_boolean('save_model_weight', True, 'Whether save  darknet weights as tensorflow ckpt')
 tf.app.flags.DEFINE_boolean('save_model_pb', True, 'Whether save  model weights as tensorflow pb')
 
-class YOLOV2(object):
+class YOLOV2_Tiny_Voc(object):
  ##################### 构造函数：初始化yolo中参数#################################################################
  def __init__(self,weights_file, verbose=True):
   # 后面程序打印描述功能的标志位
@@ -76,7 +74,7 @@ class YOLOV2(object):
            anchors=ANCHOR)
   
   if FLAGS.load_darknet_weight:
-   self.load_ops = self._load_weights(tf.global_variables(scope='yolov2'), weights_file)
+   self.load_ops = self._load_weights(tf.global_variables(scope='yolov2_tiny_voc'), weights_file)
    self.sess.run(self.load_ops)
    if FLAGS.save_model_weight:
     saver = tf.train.Saver()
@@ -86,7 +84,7 @@ class YOLOV2(object):
    self._load_ckpts(FLAGS.yolov2_ckpt_weight) # import weight form ckpt
    
   if(FLAGS.save_model_pb):
-      self._save_graph_to_file(self.sess, self.sess.graph_def ,"models/yolov2_frozen_graph.pb") 
+      self._save_graph_to_file(self.sess, self.sess.graph_def ,"models/yolov2-tiny-voc_frozen_graph.pb") 
   
   #self.sess.run(tf.global_variables_initializer())
   
@@ -163,13 +161,13 @@ class YOLOV2(object):
 
  def _build_network(self,
                     images,
-                    num_outputs=425,
+                    num_outputs=125,
                     alpha=0.1,
                     keep_prob=0.5,
                     is_training=False,
                     reuse=False,
                     data_format='NHWC',
-                    scope='yolov2'):
+                    scope='yolov2_tiny_voc'):
   
   batch_norm_params = {
          'is_training': is_training,
@@ -184,77 +182,44 @@ class YOLOV2(object):
                              biases_initializer=None, activation_fn=lambda x: tf.nn.leaky_relu(x, alpha=alpha), padding='SAME'):
                 with tf.variable_scope(scope):
      
-                     net = slim.conv2d(images, 32, 3)    #[1, 416, 416, 32]
+                     net = slim.conv2d(images, 16, 3)    #[1, 416, 416, 32]
                      self._print_activations(net)
                      net = slim.max_pool2d(net, 2, padding='VALID', scope='pool1')    #[1, 208, 208, 32]
                      self._print_activations(net)
                        
-                     net = slim.conv2d(net, 64, 3)    #[1, 208, 208, 64]
+                     net = slim.conv2d(net, 32, 3)    #[1, 208, 208, 64]
                      self._print_activations(net)
                      net = slim.max_pool2d(net, 2, padding='VALID', scope='pool2')    #[1, 104, 104, 64]
                      self._print_activations(net)
                        
-                     net = slim.conv2d(net, 128, 3)    #[1, 104, 104, 128]
+                     net = slim.conv2d(net, 64, 3)   
                      self._print_activations(net)
-                     net = slim.conv2d(net, 64, 1)     #[1, 104, 104, 64]
+                     net = slim.max_pool2d(net, 2, padding='VALID', scope='pool3')   
                      self._print_activations(net)
-                     net = slim.conv2d(net, 128, 3)    #[1, 104, 104, 128]
+                     
+                     net = slim.conv2d(net, 128, 3)   
                      self._print_activations(net)
-                     net = slim.max_pool2d(net, 2, padding='VALID', scope='pool3')    #[1, 52, 52, 128]
+                     net = slim.max_pool2d(net, 2, padding='VALID', scope='pool4')   
                      self._print_activations(net)
-                       
-                     net = slim.conv2d(net, 256, 3)    #[1, 52, 52, 256]
+                     
+                     net = slim.conv2d(net, 256, 3)   
                      self._print_activations(net)
-                     net = slim.conv2d(net, 128, 1)    #[1, 52, 52, 128]
+                     net = slim.max_pool2d(net, 2, padding='VALID', scope='pool5')   
                      self._print_activations(net)
-                     net = slim.conv2d(net, 256, 3)    #[1, 52, 52, 256]
+                     
+                     net = slim.conv2d(net, 512, 3)   
                      self._print_activations(net)
-                     net = slim.max_pool2d(net, 2, padding='VALID', scope='pool4')    #[1, 26, 26, 256]
+                     net = slim.max_pool2d(net, 2, stride=1, padding='SAME', scope='pool6')   
                      self._print_activations(net)
-                       
-                     net = slim.conv2d(net, 512, 3)    #[1, 26, 26, 512]
-                     self._print_activations(net)
-                     net = slim.conv2d(net, 256, 1)    #[1, 26, 26, 256]
-                     self._print_activations(net)
-                     net = slim.conv2d(net, 512, 3)    #[1, 26, 26, 512]
-                     self._print_activations(net)
-                     net = slim.conv2d(net, 256, 1)    #[1, 26, 26, 256]
-                     self._print_activations(net)
-                     net = slim.conv2d(net, 512, 3)    #[1, 26, 26, 512]
-                     self._print_activations(net)
-                       
-                     shortcut = net                       #Conv_12 ,存储这一层特征图，以便后面passthrough层
-                       
-                     net = slim.max_pool2d(net, 2, padding='VALID', scope='pool5')    #[1, 13, 13, 512]
-                     self._print_activations(net)
-                       
+                     
                      net = slim.conv2d(net, 1024, 3)    #[1, 13, 13, 1024]
                      self._print_activations(net)
-                     net = slim.conv2d(net, 512, 1)     #[1, 13, 13, 512]
-                     self._print_activations(net)
-                     net = slim.conv2d(net, 1024, 3)    #[1, 13, 13, 1024]
-                     self._print_activations(net)
-                     net = slim.conv2d(net, 512, 1)     #[1, 13, 13, 512])
-                     self._print_activations(net)
-                     net = slim.conv2d(net, 1024, 3)    #[1, 13, 13, 1024]
-                     self._print_activations(net)
-                      
+                     
                      #detection
                      net = slim.conv2d(net, 1024, 3)    #[1, 13, 13, 1024]
                      self._print_activations(net)
-                     net = slim.conv2d(net, 1024, 3)    #[1, 13, 13, 1024]
-                     self._print_activations(net)
-                       
-                     shortcut = slim.conv2d(shortcut, 64, 1)    #[None, 16, 16, 1024]  => [None, 7, 7, 1024]
-                     self._print_activations(shortcut)
-                     shortcut = self._reorg(shortcut, 2)
-                     self._print_activations(shortcut)
-                     net = tf.concat([shortcut, net], axis=-1)  # channel整合到一起
-                     self._print_activations(net)
-                       
-                     net = slim.conv2d(net, 1024, 3)     #[1, 13, 13, 1024]
-                     self._print_activations(net)
-                     predicts = slim.conv2d(net, num_outputs, 1, biases_initializer=tf.zeros_initializer(),activation_fn=None,normalizer_fn=None,)    #[None, 7, 7, 1024]  => [None, 7, 7, 1024]
+                     
+                     predicts = slim.conv2d(net, num_outputs, 1, biases_initializer=tf.zeros_initializer(),activation_fn=None,normalizer_fn=None,)
                      self._print_activations(predicts)
                       
                      return predicts
@@ -539,9 +504,9 @@ class YOLOV2(object):
 
 if __name__ == '__main__':
  #load the darknet yolov2 weight, wget https://pjreddie.com/media/files/yolov2.weights 
- yolov2_net = YOLOV2(weights_file=FLAGS.darknet_weights_file) 
+ yolov2_tiny_net = YOLOV2_Tiny_Voc(weights_file=FLAGS.darknet_weights_file) 
  images = tf.gfile.Glob(FLAGS.image_dir+"/*.jpg")
  for f in images:
-  yolov2_net.detect_from_file(image_file=f) 
+  yolov2_tiny_net.detect_from_file(image_file=f) 
  
  
