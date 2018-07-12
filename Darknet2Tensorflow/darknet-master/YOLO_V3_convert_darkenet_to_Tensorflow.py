@@ -299,17 +299,17 @@ class YOLOV3(object):
 	    for i in range(8):
 	        inputs = self._darknet53_block(inputs, 128)
 	
-	    route_1 = inputs#52X52X256
+	    route_1 = inputs                              #52X52X256
 	    inputs = self._conv2d_fixed_padding(inputs, 512, 3, strides=2)
 	
 	    for i in range(8):
 	        inputs = self._darknet53_block(inputs, 256)
 	
-	    route_2 = inputs#26X26X512
+	    route_2 = inputs                               #26X26X512
 	    inputs = self._conv2d_fixed_padding(inputs, 1024, 3, strides=2)
 	
 	    for i in range(4):
-	        inputs = self._darknet53_block(inputs, 512)#inputs 13X13X1024
+	        inputs = self._darknet53_block(inputs, 512) #13X13X1024
 	    
 	    
 	    return route_1, route_2, inputs
@@ -317,18 +317,18 @@ class YOLOV3(object):
 	    #route_2    Tensor: Tensor("detector/darknet-53/add_18:0", shape=(?, 26, 26, 512), dtype=float32)    
 	    #inputs    Tensor: Tensor("detector/darknet-53/add_22:0", shape=(?, 13, 13, 1024), dtype=float32)
 	
-	def _yolo_block(self, inputs, filters):
-	    with tf.name_scope("yolo_block"):
+	def _yolo_top_down_pathway(self, inputs, filters, scope=None):
+	    with tf.name_scope(scope):
 	        inputs = self._conv2d_fixed_padding(inputs, filters, 1)
 	        inputs = self._conv2d_fixed_padding(inputs, filters * 2, 3)
 	        inputs = self._conv2d_fixed_padding(inputs, filters, 1)
 	        inputs = self._conv2d_fixed_padding(inputs, filters * 2, 3)
 	        inputs = self._conv2d_fixed_padding(inputs, filters, 1)
 	        route = inputs
-	        inputs = self._conv2d_fixed_padding(inputs, filters * 2, 3)
-	        return route, inputs
+	        detection = self._conv2d_fixed_padding(inputs, filters * 2, 3)
+	        return route, detection
 	  
-	def _upsample(self, inputs, out_shape, data_format='NCHW'):
+	def _upsample_by_2x(self, inputs, out_shape, data_format='NCHW'):
 	    # we need to pad with one pixel, so we set kernel_size = 3
 	    inputs = self._fixed_padding(inputs, 3, mode='SYMMETRIC')
 	
@@ -360,8 +360,8 @@ class YOLOV3(object):
 	    inputs = tf.identity(inputs, name='upsampled')
 	    return inputs  
 	  
-	def _ratio_detection_layer(self, inputs, num_classes, anchors, img_size, data_format):
-	    with tf.name_scope("detection_layer"):
+	def _detection_layer(self, inputs, num_classes, anchors, img_size, data_format):
+	    with tf.name_scope("predict_detection"):
 	        num_anchors = len(anchors)#3
 	        predictions = slim.conv2d(inputs, num_anchors * (5 + num_classes), 1, stride=1, normalizer_fn=None,
 	                                  activation_fn=None, biases_initializer=tf.zeros_initializer())
@@ -428,7 +428,7 @@ class YOLOV3(object):
 	            box_sizes = box_sizes /grid_size
 	        
 	        #(xcenter, ycenter, w, h, confidence ,classes_probability)
-	        predictions = tf.concat([box_centers, box_sizes, confidence,classes], axis=-1)
+	        predictions = tf.concat([box_centers, box_sizes, confidence, classes], axis=-1)
 	        
 	        return predictions
 
@@ -475,48 +475,48 @@ class YOLOV3(object):
 	                            biases_initializer=None, activation_fn=lambda x: tf.nn.leaky_relu(x, alpha=_LEAKY_RELU)):
 	        	with tf.variable_scope(scope):
 		            with tf.variable_scope('darknet-53'):
-		                route_1, route_2, inputs = self._darknet53(inputs)
+		                route_1, route_2, route_3 = self._darknet53(inputs)
 		                #route_1    Tensor: Tensor("detector/darknet-53/add_10:0", shape=(?, 52, 52, 256), dtype=float32)    
 		                #route_2    Tensor: Tensor("detector/darknet-53/add_18:0", shape=(?, 26, 26, 512), dtype=float32)    
-		                #inputs    Tensor: Tensor("detector/darknet-53/add_22:0", shape=(?, 13, 13, 1024), dtype=float32)
+		                #route_3    Tensor: Tensor("detector/darknet-53/add_22:0", shape=(?, 13, 13, 1024), dtype=float32)
 		
-		            with tf.variable_scope('detector'):
+		            with tf.variable_scope('FPN_Detector'):#feature pyramid network detector
 		                with tf.name_scope("Predict_1"):
-		                    route, inputs = self._yolo_block(inputs, 512)
-		                    detect_1 = self._ratio_detection_layer(inputs, num_classes, _ANCHORS[6:9], img_size, data_format)
-		                    detect_1 = tf.identity(detect_1, name='scale_1')#Tensor("detector/yolo-v3/Detection_0/detect_1:0", shape=(?, 507, 85), dtype=float32)
+		                    route, detection = self._yolo_top_down_pathway(route_3, 512,"Top_Down_1")
+		                    detect_1 = self._detection_layer(detection, num_classes, _ANCHORS[6:9], img_size, data_format)
+		                detect_1 = tf.identity(detect_1, name='predict_1')#Tensor("detector/yolo-v3/Detection_0/detect_1:0", shape=(?, 507, 85), dtype=float32)
 		
 		                with tf.name_scope("Predict_2"):
 		                    with tf.name_scope("upsample"):
-		                        inputs = self._conv2d_fixed_padding(route, 256, 1)
+		                        outputs = self._conv2d_fixed_padding(route, 256, 1)
 		                        upsample_size = route_2.get_shape().as_list()
-		                        inputs = self._upsample(inputs, upsample_size, data_format)
-		                        inputs = tf.concat([inputs, route_2], axis=1 if data_format == 'NCHW' else 3)
+		                        outputs = self._upsample_by_2x(outputs, upsample_size, data_format)
+		                        outputs = tf.concat([outputs, route_2], axis=1 if data_format == 'NCHW' else 3)
 		    
-		                    route, inputs = self._yolo_block(inputs, 256)
-		                    detect_2 = self._ratio_detection_layer(inputs, num_classes, _ANCHORS[3:6], img_size, data_format)
-		                    detect_2 = tf.identity(detect_2, name='scale_2')#Tensor("detector/yolo-v3/Detection_2/detect_2:0", shape=(?, 2028, 85), dtype=float32)
+		                    route, detection = self._yolo_top_down_pathway(outputs, 256,"Top_Down_2")
+		                    detect_2 = self._detection_layer(detection, num_classes, _ANCHORS[3:6], img_size, data_format)
+		                detect_2 = tf.identity(detect_2, name='predict_2')#Tensor("detector/yolo-v3/Detection_2/detect_2:0", shape=(?, 2028, 85), dtype=float32)
 		                
 		                with tf.name_scope("Predict_3"):
 		                    with tf.name_scope("upsample"):
-		                        inputs = self._conv2d_fixed_padding(route, 128, 1)
+		                        outputs = self._conv2d_fixed_padding(route, 128, 1)
 		                        upsample_size = route_1.get_shape().as_list()
-		                        inputs = self._upsample(inputs, upsample_size, data_format)
-		                        inputs = tf.concat([inputs, route_1], axis=1 if data_format == 'NCHW' else 3)
+		                        outputs = self._upsample_by_2x(outputs, upsample_size, data_format)
+		                        outputs = tf.concat([outputs, route_1], axis=1 if data_format == 'NCHW' else 3)
 		    
-		                    _, inputs = self._yolo_block(inputs, 128)
-		                    detect_3 = self._ratio_detection_layer(inputs, num_classes, _ANCHORS[0:3], img_size, data_format)
-		                    detect_3 = tf.identity(detect_3, name='scale_3')#Tensor("detector/yolo-v3/Detection_3/detect_3:0", shape=(?, 8112, 85), dtype=float32)
+		                    _, detection = self._yolo_top_down_pathway(outputs, 128,"Top_Down_3")
+		                    detect_3 = self._detection_layer(detection, num_classes, _ANCHORS[0:3], img_size, data_format)
+		                detect_3 = tf.identity(detect_3, name='predict_3')#Tensor("detector/yolo-v3/Detection_3/detect_3:0", shape=(?, 8112, 85), dtype=float32)
 		    
 		                #(xcenter, ycenter, w, h, confidence ,classes_probability)
-		                detections = tf.concat([detect_1, detect_2, detect_3], axis=1)
+		                detections = tf.concat([detect_1, detect_2, detect_3], axis=1, name="detect_merge")
 		                
 		                
 		                with tf.name_scope("coord_transform"):
 		                    center_x, center_y, width, height, confidence, class_prob = tf.split(detections, [1, 1, 1, 1, 1, -1], axis=-1)
 		                    w2 = width * 0.5
 		                    h2 = height * 0.5       
-		                    bboxes = tf.concat([center_x - w2, center_y - h2, center_x + w2, center_y + h2], axis=-1)
+		                    bboxes = tf.concat([center_x - w2, center_y - h2, center_x + w2, center_y + h2], axis=-1)#(x1,y1,x2,y2)
 		                    
 		                with tf.name_scope("select-threhold"):
 		                    # score filter
@@ -613,7 +613,7 @@ class YOLOV3(object):
 		img_detection = self.draw_detection(image, boxes, scores, box_classes, self.class_names)	
 		if detected_image_file:
 			   cv2.imwrite(os.path.join("out",detected_image_file), img_detection)
-			   
+
 		cv2.imshow("detection_results", img_detection)
 		cv2.waitKey(0)
 

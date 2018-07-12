@@ -66,7 +66,7 @@ class YOLOV3_Tiny(object):
  		self.images = self._input_process(self.input_size)
  		self.boxes, \
  		self.scores, \
- 		self.classes = self.yolo_v3(self.images, len(self.class_names), score_threshold=self.threshold, iou_threshold=self.iou_threshold, data_format='NHWC')
+ 		self.classes = self.yolo_v3_tiny(self.images, len(self.class_names), score_threshold=self.threshold, iou_threshold=self.iou_threshold, data_format='NHWC')
 		
 		if FLAGS.load_darknet_weight:
 			self.load_ops = self._load_weights(tf.global_variables(scope='yolov3_tiny'), weights_file)
@@ -271,62 +271,6 @@ class YOLOV3_Tiny(object):
 	        inputs = self._fixed_padding(inputs, kernel_size)
 	    inputs = slim.conv2d(inputs, filters, kernel_size, stride=strides, padding=('SAME' if strides == 1 else 'VALID'))
 	    return inputs
-	
-	def _darknet53_block(self, inputs, filters):
-	    shortcut = inputs
-	    inputs = self._conv2d_fixed_padding(inputs, filters, 1)
-	    inputs = self._conv2d_fixed_padding(inputs, filters * 2, 3)
-	    
-	    inputs = inputs + shortcut
-	    return inputs
-	
-	def _darknet53(self, inputs):
-	    """
-	    Builds Darknet-53 model.
-	    """
-	    inputs = self._conv2d_fixed_padding(inputs, 32, 3)
-	    inputs = self._conv2d_fixed_padding(inputs, 64, 3, strides=2)
-	    
-	    inputs = self._darknet53_block(inputs, 32)
-	    
-	    inputs = self._conv2d_fixed_padding(inputs, 128, 3, strides=2)
-	
-	    for i in range(2):
-	        inputs = self._darknet53_block(inputs, 64)
-	
-	    inputs = self._conv2d_fixed_padding(inputs, 256, 3, strides=2)
-	
-	    for i in range(8):
-	        inputs = self._darknet53_block(inputs, 128)
-	
-	    route_1 = inputs#52X52X256
-	    inputs = self._conv2d_fixed_padding(inputs, 512, 3, strides=2)
-	
-	    for i in range(8):
-	        inputs = self._darknet53_block(inputs, 256)
-	
-	    route_2 = inputs#26X26X512
-	    inputs = self._conv2d_fixed_padding(inputs, 1024, 3, strides=2)
-	
-	    for i in range(4):
-	        inputs = self._darknet53_block(inputs, 512)#inputs 13X13X1024
-	    
-	    
-	    return route_1, route_2, inputs
-	    #route_1    Tensor: Tensor("detector/darknet-53/add_10:0", shape=(?, 52, 52, 256), dtype=float32)    
-	    #route_2    Tensor: Tensor("detector/darknet-53/add_18:0", shape=(?, 26, 26, 512), dtype=float32)    
-	    #inputs    Tensor: Tensor("detector/darknet-53/add_22:0", shape=(?, 13, 13, 1024), dtype=float32)
-	
-	def _yolo_block(self, inputs, filters):
-	    with tf.name_scope("yolo_block"):
-	        inputs = self._conv2d_fixed_padding(inputs, filters, 1)
-	        inputs = self._conv2d_fixed_padding(inputs, filters * 2, 3)
-	        inputs = self._conv2d_fixed_padding(inputs, filters, 1)
-	        inputs = self._conv2d_fixed_padding(inputs, filters * 2, 3)
-	        inputs = self._conv2d_fixed_padding(inputs, filters, 1)
-	        route = inputs
-	        inputs = self._conv2d_fixed_padding(inputs, filters * 2, 3)
-	        return route, inputs
 	  
 	def _upsample(self, inputs, out_shape, data_format='NCHW'):
 	    # we need to pad with one pixel, so we set kernel_size = 3
@@ -360,13 +304,13 @@ class YOLOV3_Tiny(object):
 	    inputs = tf.identity(inputs, name='upsampled')
 	    return inputs  
 	  
-	def _ratio_detection_layer(self, inputs, num_classes, anchors, img_size, data_format):
+	def _detection_layer(self, inputs, num_classes, anchors, img_size, data_format):
 	    with tf.name_scope("detection_layer"):
 	        num_anchors = len(anchors)#3
-# 	        predictions = slim.conv2d(inputs, num_anchors * (5 + num_classes), 1, stride=1, normalizer_fn=None,
-# 	                                  activation_fn=None, biases_initializer=tf.zeros_initializer())
+ 	        predictions = slim.conv2d(inputs, num_anchors * (5 + num_classes), 1, stride=1, normalizer_fn=None,
+ 	                                activation_fn=None, biases_initializer=tf.zeros_initializer())
 	    
-	        predictions = detect_1 = tf.identity(inputs)
+# 	        predictions = detect_1 = tf.identity(inputs)
 	        shape = predictions.get_shape().as_list()
 	        #[None, 13, 13, 255], scale1
 	        #[None, 26, 26, 255], scale2
@@ -429,7 +373,7 @@ class YOLOV3_Tiny(object):
 	        
 	        return predictions
 
-	def yolo_v3(self, 
+	def yolo_v3_tiny(self, 
 			inputs, 
 			num_classes,
 			score_threshold=0.5, 
@@ -440,7 +384,7 @@ class YOLOV3_Tiny(object):
 			scope='yolov3_tiny',
 			reuse=False):
 	    """
-	    Creates YOLO v3 model.
+	    Creates YOLO v3 tiny model.
 	
 	    :param inputs: a 4-D tensor of size [batch_size, height, width, channels].
 	        Dimension batch_size may be undefined.
@@ -468,84 +412,64 @@ class YOLOV3_Tiny(object):
 	
 	    # Set activation_fn and parameters for conv2d, batch_norm.
 	    with slim.arg_scope([slim.conv2d, slim.batch_norm, self._fixed_padding], data_format=data_format, reuse=reuse):
-	        with slim.arg_scope([slim.conv2d], normalizer_fn=slim.batch_norm, normalizer_params=batch_norm_params,
-	                            biases_initializer=None, activation_fn=lambda x: tf.nn.leaky_relu(x, alpha=_LEAKY_RELU)):
+	        with slim.arg_scope([slim.conv2d], 
+							normalizer_fn=slim.batch_norm, 
+							normalizer_params=batch_norm_params,
+	                        biases_initializer=None, 
+	                        activation_fn=lambda x: tf.nn.leaky_relu(x, alpha=_LEAKY_RELU)):
 	        	with tf.variable_scope(scope):
-		            with tf.variable_scope("yolo"):
-# 		                route_1, route_2, inputs = self._darknet53(inputs)
-# 		                #route_1    Tensor: Tensor("detector/darknet-53/add_10:0", shape=(?, 52, 52, 256), dtype=float32)    
-# 		                #route_2    Tensor: Tensor("detector/darknet-53/add_18:0", shape=(?, 26, 26, 512), dtype=float32)    
-# 		                #inputs    Tensor: Tensor("detector/darknet-53/add_22:0", shape=(?, 13, 13, 1024), dtype=float32)
-
+		            with tf.variable_scope("yolo-v3"):
 						net = self._conv2d_fixed_padding(inputs, 16, 3)   #0
 						net = slim.max_pool2d(net, 2, scope='pool_1')     #1
 						
-						net = self._conv2d_fixed_padding(net, 32, 3)   #2
+						net = self._conv2d_fixed_padding(net, 32, 3)      #2
 						net = slim.max_pool2d(net, 2, scope='pool_2')     #3
 						
-						net = self._conv2d_fixed_padding(net, 64, 3)   #4
+						net = self._conv2d_fixed_padding(net, 64, 3)      #4
 						net = slim.max_pool2d(net, 2, scope='pool_3')     #5
 
-						net = self._conv2d_fixed_padding(net, 128, 3)  #6
+						net = self._conv2d_fixed_padding(net, 128, 3)     #6
 						net = slim.max_pool2d(net, 2, scope='pool_4')     #7
 						
-						net = self._conv2d_fixed_padding(net, 256, 3)  #8
-						scare1 = net 								   # 26 x  26 x 256
+						net = self._conv2d_fixed_padding(net, 256, 3)     #8
+						route_1 = net 								      #       26 x  26 x 256
 						net = slim.max_pool2d(net, 2, scope='pool_5')     #9
 						
-						net = self._conv2d_fixed_padding(net, 512, 3)  #10
-						net = slim.max_pool2d(net, 2, stride=1, padding='SAME', scope='pool6')        #11
+						net = self._conv2d_fixed_padding(net, 512, 3)     #10
 						
-						net = self._conv2d_fixed_padding(net, 1024, 3)  #12
-						net = self._conv2d_fixed_padding(net, 256, 1)  #13
-						route= net  								   #17       13 x  13 x 256
+					    
 						
-						net = self._conv2d_fixed_padding(net, 512, 3)  #14
-# 						net = self._conv2d_fixed_padding(net, 255, 1)  #15
-						net = slim.conv2d(net, 255, 1, stride=1, normalizer_fn=None,activation_fn=None, biases_initializer=tf.zeros_initializer())
-						detect_1= net								   #16
-						
-						
-						net = self._conv2d_fixed_padding(route, 128, 1)  #18
-						upsample_size = scare1.get_shape().as_list()
-						net = self._upsample(net, upsample_size, data_format)
-						net = tf.concat([net, scare1], axis=1 if data_format == 'NCHW' else 3)
-						
-						net = self._conv2d_fixed_padding(net, 256, 3)  #21
-# 						net = self._conv2d_fixed_padding(net, 255, 1)  #22
-						net = slim.conv2d(net, 255, 1, stride=1, normalizer_fn=None,activation_fn=None, biases_initializer=tf.zeros_initializer())
-						detect_2 = net
-				
-		            with tf.variable_scope('detector'):
-		                with tf.name_scope("Predict_1"):
-	 		                detect_1 = self._ratio_detection_layer(detect_1, num_classes, _ANCHORS[3:6], img_size, data_format)
-	 		                detect_1 = tf.identity(detect_1, name='scale_1')#Tensor("detector/yolo-v3/Detection_0/detect_1:0", shape=(?, 507, 85), dtype=float32)
+	
+		            with tf.variable_scope('RPN_detector'):
+		            	with tf.variable_scope("lateral_connection"):
+							net = slim.max_pool2d(net, 2, stride=1, padding='SAME', scope='pool6')        #11
+							net = self._conv2d_fixed_padding(net, 1024, 3)    #12
+							net = self._conv2d_fixed_padding(net, 256, 1)  	  #13
+							route_2= net  								      #17       13 x  13 x 256
+							
+		                with tf.variable_scope("Predict_1"):
+		                	net = self._conv2d_fixed_padding(net, 512, 3)  #14
+	 		                detect_1 = self._detection_layer(net, num_classes, _ANCHORS[3:6], img_size, data_format)
+	 		                detect_1 = tf.identity(detect_1, name='detect_1')#Tensor("detector/yolo-v3/Detection_0/detect_1:0", shape=(?, 507, 85), dtype=float32)
 	 		
-		                with tf.name_scope("Predict_2"):
-	 		                detect_2 = self._ratio_detection_layer(detect_2, num_classes, _ANCHORS[0:3], img_size, data_format)
-	 		                detect_2 = tf.identity(detect_2, name='scale_2')#Tensor("detector/yolo-v3/Detection_2/detect_2:0", shape=(?, 2028, 85), dtype=float32)
- 		                
-#  		             with tf.name_scope("Predict_3"):
-#  		                 with tf.name_scope("upsample"):
-#  		                     inputs = self._conv2d_fixed_padding(route, 128, 1)
-#  		                     upsample_size = route_1.get_shape().as_list()
-#  		                     inputs = self._upsample(inputs, upsample_size, data_format)
-#  		                     inputs = tf.concat([inputs, route_1], axis=1 if data_format == 'NCHW' else 3)
-#  		    
-#  		                 _, inputs = self._yolo_block(inputs, 128)
-#  		                 detect_3 = self._ratio_detection_layer(inputs, num_classes, _ANCHORS[0:3], img_size, data_format)
-#  		                 detect_3 = tf.identity(detect_3, name='scale_3')#Tensor("detector/yolo-v3/Detection_3/detect_3:0", shape=(?, 8112, 85), dtype=float32)
-		    
-		                #(xcenter, ycenter, w, h, confidence ,classes_probability)
+		                with tf.variable_scope("Predict_2"):
+		                	with tf.variable_scope("upsample"):
+		 		                net = self._conv2d_fixed_padding(route_2 , 128, 1)  #18
+		 		                upsample_size = route_1.get_shape().as_list()
+		 		                net = self._upsample(net, upsample_size, data_format)
+	 		                	net = tf.concat([net, route_1], axis=1 if data_format == 'NCHW' else 3)
+	 		                net = self._conv2d_fixed_padding(net, 256, 3)            #21
+	 		                detect_2 = self._detection_layer(net, num_classes, _ANCHORS[0:3], img_size, data_format)
+	 		                detect_2 = tf.identity(detect_2, name='detect_2')#Tensor("detector/yolo-v3/Detection_2/detect_2:0", shape=(?, 2028, 85), dtype=float32)
+
 		                detections = tf.concat([detect_1, detect_2], axis=1)
-		                
-		                
+
 		                with tf.name_scope("coord_transform"):
 	 		                center_x, center_y, width, height, confidence, class_prob = tf.split(detections, [1, 1, 1, 1, 1, -1], axis=-1)
 	 		                w2 = width * 0.5
 	 		                h2 = height * 0.5       
 	 		                bboxes = tf.concat([center_x - w2, center_y - h2, center_x + w2, center_y + h2], axis=-1)
-		                    
+
 		                with tf.name_scope("select-threhold"):
 		                    # score filter
 		                    box_scores = confidence * class_prob      # (?, 20)
@@ -621,7 +545,7 @@ class YOLOV3_Tiny(object):
 	##########################################################################################################
 	
 	
-	def detect_from_file(self,image_file,imshow=True,deteted_boxes_file="boxes.txt",
+	def detect_from_file(self,image_file, deteted_boxes_file="boxes.txt",
 						 detected_image_file="detected_image.jpg"): 
 		# read image
 		image = cv2.imread(image_file)
